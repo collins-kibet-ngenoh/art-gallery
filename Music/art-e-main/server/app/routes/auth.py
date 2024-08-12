@@ -2,17 +2,30 @@ from flask import Blueprint, request, jsonify
 from app import db
 from app.models import User
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
+from flask_cors import CORS
 
 bp = Blueprint('auth', __name__)
+
+# Initialize CORS with appropriate settings
+CORS(bp, resources={r"/api/*": {"origins": "http://localhost:3000"}})
 
 @bp.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
+    if not data:
+        return jsonify(message="No input data provided"), 400
+
     username = data.get('username')
     email = data.get('email')
     password = data.get('password')
     is_artist = data.get('is_artist', False)
     
+    if not username or not email or not password:
+        return jsonify(message="Username, email, and password are required"), 400
+
+    if User.query.filter_by(email=email).first():
+        return jsonify(message="Email is already registered"), 400
+
     user = User(username=username, email=email, is_artist=is_artist)
     user.set_password(password)
     db.session.add(user)
@@ -26,6 +39,9 @@ def login():
     email = data.get('email')
     password = data.get('password')
     
+    if not email or not password:
+        return jsonify(message="Email and password are required"), 400
+
     user = User.query.filter_by(email=email).first()
     if user and user.check_password(password):
         access_token = create_access_token(identity=user.id)
@@ -38,6 +54,9 @@ def login():
 def profile():
     current_user = get_jwt_identity()
     user = User.query.get(current_user)
+    
+    if not user:
+        return jsonify(message="User not found"), 404
     
     return jsonify({
         'username': user.username,
@@ -55,5 +74,4 @@ def refresh():
 @bp.route('/logout', methods=['POST'])
 @jwt_required()
 def logout():
-    # Here, you might want to add logic to invalidate the token, but Flask-JWT-Extended doesn't handle token revocation out-of-the-box
     return jsonify(message="Logout successful"), 200
